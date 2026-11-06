@@ -54,7 +54,38 @@ jobs:
       - name: Testes (unitários + integração com Postgres)
         env:
           TEST_DATABASE_URL: postgresql://app:app@localhost:5432/app
-        run: pytest -v
+        run: >-
+          pytest -v --junitxml=junit.xml
+          --cov=src --cov-report=term --cov-report=markdown:coverage.md --cov-fail-under=80
+      - name: Resumo dos testes
+        if: always()
+        run: |
+          python - >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          junit = pathlib.Path("junit.xml")
+          if junit.exists():
+              root = ET.parse(junit).getroot()
+              suite = root if root.tag == "testsuite" else root.find("testsuite")
+              total, fail = int(suite.get("tests")), int(suite.get("failures"))
+              err, skip = int(suite.get("errors")), int(suite.get("skipped"))
+              ok = total - fail - err - skip
+              print("## Testes da API\n")
+              print("| Total | Passaram | Falharam | Ignorados | Tempo |")
+              print("|---:|---:|---:|---:|---:|")
+              print(f"| {total} | {ok} | {fail + err} | {skip} | {float(suite.get('time')):.1f} s |\n")
+              print("<details><summary>Casos de teste</summary>\n")
+              for case in suite.iter("testcase"):
+                  status = "❌" if case.find("failure") is not None or case.find("error") is not None \
+                      else "⏭️" if case.find("skipped") is not None else "✅"
+                  print(f"- {status} `{case.get('classname')}::{case.get('name')}`")
+              print("\n</details>\n")
+          cov = pathlib.Path("coverage.md")
+          if cov.exists():
+              print("## Cobertura (mínimo 80%)\n")
+              print(cov.read_text())
+          EOF
 
   image:
     needs: test
@@ -115,6 +146,26 @@ jobs:
         if: github.event_name != 'pull_request'
         working-directory: .
         run: docker push "$IMAGE:${{ steps.vars.outputs.tag }}"
+      - name: Resumo da imagem
+        if: github.event_name != 'pull_request'
+        working-directory: .
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          size=$(docker image inspect "$IMAGE:$TAG" --format '{{.Size}}' | awk '{printf "%.0f MB", $1/1000/1000}')
+          digest=$(docker image inspect "$IMAGE:$TAG" --format '{{index .RepoDigests 0}}')
+          user=$(docker image inspect "$IMAGE:$TAG" --format '{{.Config.User}}')
+          {
+            echo "## Imagem publicada"
+            echo
+            echo "| Item | Valor |"
+            echo "|---|---|"
+            echo "| Imagem | \`$IMAGE:$TAG\` |"
+            echo "| Digest | \`${digest#*@}\` |"
+            echo "| Tamanho | $size |"
+            echo "| Usuário | \`$user\` (não-root) |"
+            echo "| Trivy | nenhuma vulnerabilidade HIGH/CRITICAL com correção disponível |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # GitOps: o CI não fala com o cluster. Ele só altera o estado desejado no Git,
   # e o Argo CD aplica. Commits feitos com GITHUB_TOKEN não disparam novos workflows,

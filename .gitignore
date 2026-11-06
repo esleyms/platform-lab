@@ -24,3 +24,6 @@ kubeconfig*
 .DS_Store
 .idea/
 .vscode/
+junit.xml
+coverage.md
+.coverage

@@ -45,17 +45,23 @@ jobs:
         timeout-minutes: 5
         run: |
           make ca
+          # Cada verificação vira uma linha no resumo da execução.
+          check() { echo "| $1 | \`$2\` | ✅ |" >> "$RUNNER_TEMP/checks.md"; }
           # Sem timeout, uma conexão que abre e nunca responde segura o curl por minutos.
           t=(--connect-timeout 5 --max-time 15)
           for path in /readyz /api/items /version; do
-            curl -fsS "${t[@]}" --retry 10 --retry-delay 6 --retry-all-errors \
-              --cacert "$STATE_DIR/ca.crt" "https://api-dev.localhost${path}"
-            echo
+            body=$(curl -fsS "${t[@]}" --retry 10 --retry-delay 6 --retry-all-errors \
+              --cacert "$STATE_DIR/ca.crt" "https://api-dev.localhost${path}")
+            echo "$body"
+            check "API dev via Gateway (TLS)" "GET ${path} → ${body:0:40}"
           done
-          curl -fsS "${t[@]}" -o /dev/null -w "grafana %{http_code}\n" --cacert "$STATE_DIR/ca.crt" https://grafana.localhost/login
-          curl -fsS "${t[@]}" -o /dev/null -w "argocd %{http_code}\n" --cacert "$STATE_DIR/ca.crt" https://argocd.localhost/
+          code=$(curl -fsS "${t[@]}" -o /dev/null -w "%{http_code}" --cacert "$STATE_DIR/ca.crt" https://grafana.localhost/login)
+          check "Grafana" "HTTPS ${code}"
+          code=$(curl -fsS "${t[@]}" -o /dev/null -w "%{http_code}" --cacert "$STATE_DIR/ca.crt" https://argocd.localhost/)
+          check "Argo CD" "HTTPS ${code}"
           code=$(curl -s "${t[@]}" -o /dev/null -w "%{http_code}" http://api-dev.localhost/api/items)
           test "$code" = "301"
+          check "Redirecionamento HTTP → HTTPS" "HTTP ${code}"
       - name: Prometheus coleta a API
         run: |
           kubectl -n monitoring port-forward svc/prometheus-operated 9090 >/dev/null 2>&1 &
@@ -63,10 +69,62 @@ jobs:
           for _ in $(seq 1 20); do
             up=$(curl -s 'http://127.0.0.1:9090/api/v1/query' --data-urlencode 'query=up{namespace="api-dev",service="api"}' \
               | jq -r '.data.result | length')
-            [ "$up" -gt 0 ] && echo "alvos da API: $up" && exit 0
+            if [ "$up" -gt 0 ]; then
+              echo "alvos da API: $up"
+              echo "| Prometheus coleta a API | \`up{namespace=\"api-dev\"}\` → ${up} alvo(s) | ✅ |" >> "$RUNNER_TEMP/checks.md"
+              exit 0
+            fi
             sleep 15
           done
           echo "Prometheus não encontrou a API"; exit 1
+      - name: Tráfego sintético (para os gráficos terem dados)
+        run: |
+          end=$((SECONDS + 180))
+          while [ "$SECONDS" -lt "$end" ]; do
+            for path in /api/items /api/items/1 /version /api/items; do
+              curl -s -o /dev/null --max-time 5 --cacert "$STATE_DIR/ca.crt" "https://api-dev.localhost${path}" &
+            done
+            wait
+            sleep 0.2
+          done
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.13"
+      - name: Capturas de tela (Argo CD e Grafana)
+        id: shots
+        continue-on-error: true
+        run: |
+          pip install --quiet playwright==1.64.1
+          python -m playwright install --with-deps chromium >/dev/null
+          python scripts/screenshots.py screenshots
+      - name: Publica as capturas
+        if: steps.shots.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screenshots
+          path: screenshots/*.png
+          retention-days: 30
+      - name: Resumo
+        if: always()
+        run: |
+          {
+            echo "## Plataforma completa num runner do GitHub"
+            echo
+            echo "Cluster kind (1 control-plane + 2 workers) criado por Terraform, Argo CD sincronizando"
+            echo "toda a plataforma a partir da \`main\` e verificações de ponta a ponta:"
+            echo
+            echo "| Verificação | Detalhe | Resultado |"
+            echo "|---|---|---|"
+            cat "$RUNNER_TEMP/checks.md" 2>/dev/null
+            echo
+            echo "### Applications do Argo CD"
+            echo
+            echo "| Application | Sync | Health |"
+            echo "|---|---|---|"
+            kubectl -n argocd get applications.argoproj.io --no-headers \
+              -o custom-columns='N:.metadata.name,S:.status.sync.status,H:.status.health.status' 2>/dev/null \
+              | awk '{printf "| %s | %s | %s |\n", $1, $2, $3}'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Diagnóstico
         if: failure()
         run: |
