@@ -1,6 +1,6 @@
 # Ambiente dev. image.tag é atualizado automaticamente pelo CI a cada merge na main.
 image:
-  tag: "sha-81633cf"
+  tag: "sha-3cbd753"
 replicaCount: 1
 autoscaling:
   enabled: true
