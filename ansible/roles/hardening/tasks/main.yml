@@ -1,0 +1,54 @@
+# Ordem importa: garantir a chave ANTES de desligar senha, senão perdemos o acesso.
+- name: Autorizar a chave pública do administrador
+  ansible.posix.authorized_key:
+    user: "{{ admin_user }}"
+    key: "{{ admin_ssh_pubkey }}"
+    state: present
+
+- name: Aplicar configuração do sshd
+  ansible.builtin.template:
+    src: 10-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/10-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reiniciar ssh
+
+- name: Instalar ufw e fail2ban
+  ansible.builtin.apt:
+    name: [ufw, fail2ban]
+    state: present
+
+- name: Liberar SSH com limite de taxa
+  community.general.ufw:
+    rule: limit
+    port: "{{ hardening_ssh_port | string }}"
+    proto: tcp
+
+- name: Liberar portas do Gateway
+  community.general.ufw:
+    rule: allow
+    port: "{{ item | string }}"
+    proto: tcp
+  loop: "{{ hardening_allowed_tcp_ports }}"
+
+- name: Política padrão de entrada negada e ativar firewall
+  community.general.ufw:
+    state: enabled
+    policy: deny
+    direction: incoming
+
+- name: Parâmetros de kernel
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/70-hardening.conf
+    state: present
+  loop: "{{ hardening_sysctl | dict2items }}"
+
+- name: Garantir fail2ban ativo
+  ansible.builtin.service:
+    name: fail2ban
+    state: started
+    enabled: true

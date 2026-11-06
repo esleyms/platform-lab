@@ -1,0 +1,51 @@
+# Repositório oficial da Docker (o pacote docker.io do Ubuntu costuma ficar defasado).
+- name: Criar diretório de keyrings
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Baixar chave GPG da Docker
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: Adicionar repositório da Docker
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: [deb]
+    uris: https://download.docker.com/linux/ubuntu
+    suites: ["{{ ansible_facts['distribution_release'] }}"]
+    components: [stable]
+    architectures: ["{{ 'arm64' if ansible_facts['architecture'] == 'aarch64' else 'amd64' }}"]
+    signed_by: /etc/apt/keyrings/docker.asc
+
+- name: Instalar Docker Engine
+  ansible.builtin.apt:
+    name: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+    state: present
+    update_cache: true
+
+- name: Configurar rotação de logs do daemon
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: "{{ {'log-driver': 'json-file', 'log-opts': {'max-size': '10m', 'max-file': '3'}} | to_nice_json }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reiniciar docker
+
+- name: Garantir Docker ativo
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+# Grupo docker equivale a root no host. Aceitável numa VM de laboratório dedicada.
+- name: Adicionar usuários ao grupo docker
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: docker
+    append: true
+  loop: "{{ docker_users }}"

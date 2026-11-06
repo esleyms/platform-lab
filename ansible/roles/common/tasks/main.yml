@@ -1,0 +1,32 @@
+- name: Atualizar cache do apt
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Instalar pacotes base
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+
+- name: Definir timezone
+  community.general.timezone:
+    name: "{{ common_timezone }}"
+
+- name: Habilitar atualizações automáticas de segurança
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    owner: root
+    group: root
+    mode: "0644"
+
+# kind com 3 nós estoura os limites padrão de inotify ("too many open files").
+- name: Ajustar limites de inotify
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/60-platform-lab.conf
+    state: present
+  loop: "{{ {'fs.inotify.max_user_watches': 524288, 'fs.inotify.max_user_instances': 512} | dict2items }}"

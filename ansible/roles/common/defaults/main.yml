@@ -1,0 +1,9 @@
+common_timezone: America/Sao_Paulo
+common_packages:
+  - ca-certificates
+  - curl
+  - git
+  - gnupg
+  - jq
+  - make
+  - unattended-upgrades

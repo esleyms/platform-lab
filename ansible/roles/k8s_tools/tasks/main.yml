@@ -1,0 +1,50 @@
+# Binários com checksum publicado pelo projeto: o download falha se o arquivo for adulterado.
+- name: Instalar kubectl
+  ansible.builtin.get_url:
+    url: "https://dl.k8s.io/release/{{ k8s_tools_kubectl_version }}/bin/linux/{{ k8s_tools_arch }}/kubectl"
+    checksum: "sha256:https://dl.k8s.io/release/{{ k8s_tools_kubectl_version }}/bin/linux/{{ k8s_tools_arch }}/kubectl.sha256"
+    dest: "{{ k8s_tools_bin_dir }}/kubectl"
+    mode: "0755"
+
+- name: Instalar kind
+  ansible.builtin.get_url:
+    url: "https://github.com/kubernetes-sigs/kind/releases/download/{{ k8s_tools_kind_version }}/kind-linux-{{ k8s_tools_arch }}"
+    checksum: "sha256:https://github.com/kubernetes-sigs/kind/releases/download/{{ k8s_tools_kind_version }}/kind-linux-{{ k8s_tools_arch }}.sha256sum"
+    dest: "{{ k8s_tools_bin_dir }}/kind"
+    mode: "0755"
+
+- name: Baixar Helm
+  ansible.builtin.get_url:
+    url: "https://get.helm.sh/helm-{{ k8s_tools_helm_version }}-linux-{{ k8s_tools_arch }}.tar.gz"
+    checksum: "sha256:https://get.helm.sh/helm-{{ k8s_tools_helm_version }}-linux-{{ k8s_tools_arch }}.tar.gz.sha256sum"
+    dest: "/tmp/helm-{{ k8s_tools_helm_version }}.tar.gz"
+    mode: "0644"
+
+- name: Instalar Helm
+  ansible.builtin.unarchive:
+    src: "/tmp/helm-{{ k8s_tools_helm_version }}.tar.gz"
+    dest: "{{ k8s_tools_bin_dir }}"
+    remote_src: true
+    extra_opts: ["--strip-components=1", "linux-{{ k8s_tools_arch }}/helm"]
+    creates: "{{ k8s_tools_bin_dir }}/helm"
+
+- name: Chave do repositório HashiCorp
+  ansible.builtin.get_url:
+    url: https://apt.releases.hashicorp.com/gpg
+    dest: /etc/apt/keyrings/hashicorp.asc
+    mode: "0644"
+
+- name: Repositório HashiCorp
+  ansible.builtin.deb822_repository:
+    name: hashicorp
+    types: [deb]
+    uris: https://apt.releases.hashicorp.com
+    suites: ["{{ ansible_facts['distribution_release'] }}"]
+    components: [main]
+    signed_by: /etc/apt/keyrings/hashicorp.asc
+
+- name: Instalar Terraform
+  ansible.builtin.apt:
+    name: terraform
+    state: present
+    update_cache: true

@@ -1,0 +1,16 @@
+# Prepara uma VM Ubuntu 24.04 limpa para rodar o platform-lab:
+#   ansible-galaxy collection install -r requirements.yml
+#   ansible-playbook site.yml --check --diff   (simulação)
+#   ansible-playbook site.yml
+- name: Preparar host do platform-lab
+  hosts: lab
+  become: true
+  roles:
+    - role: common
+      tags: [common]
+    - role: hardening
+      tags: [hardening]
+    - role: docker
+      tags: [docker]
+    - role: k8s_tools
+      tags: [tools]

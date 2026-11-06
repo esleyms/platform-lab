@@ -1,0 +1,5 @@
+k8s_tools_arch: "{{ 'arm64' if ansible_facts['architecture'] == 'aarch64' else 'amd64' }}"
+k8s_tools_kubectl_version: v1.37.0
+k8s_tools_kind_version: v0.33.0
+k8s_tools_helm_version: v4.3.1
+k8s_tools_bin_dir: /usr/local/bin
