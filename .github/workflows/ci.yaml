@@ -95,6 +95,11 @@ jobs:
           format: sarif
           output: trivy.sarif
           skip-setup-trivy: true
+          # Mesma política do gate acima. Sem isto o SARIF leva todas as severidades,
+          # inclusive CVEs sem correção da imagem base, e a aba Security vira ruído.
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          limit-severities-for-sarif: true
       - if: always() && github.event_name != 'pull_request'
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
