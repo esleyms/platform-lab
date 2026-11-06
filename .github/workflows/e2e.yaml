@@ -42,16 +42,19 @@ jobs:
       - name: Aguarda a plataforma
         run: TIMEOUT=1500 scripts/wait-platform.sh
       - name: Smoke test pelo Gateway (HTTPS na porta 443 do host)
+        timeout-minutes: 5
         run: |
           make ca
+          # Sem timeout, uma conexão que abre e nunca responde segura o curl por minutos.
+          t=(--connect-timeout 5 --max-time 15)
           for path in /readyz /api/items /version; do
-            curl -fsS --retry 10 --retry-delay 6 --retry-all-errors \
+            curl -fsS "${t[@]}" --retry 10 --retry-delay 6 --retry-all-errors \
               --cacert "$STATE_DIR/ca.crt" "https://api-dev.localhost${path}"
             echo
           done
-          curl -fsS -o /dev/null -w "grafana %{http_code}\n" --cacert "$STATE_DIR/ca.crt" https://grafana.localhost/login
-          curl -fsS -o /dev/null -w "argocd %{http_code}\n" --cacert "$STATE_DIR/ca.crt" https://argocd.localhost/
-          code=$(curl -s -o /dev/null -w "%{http_code}" http://api-dev.localhost/api/items)
+          curl -fsS "${t[@]}" -o /dev/null -w "grafana %{http_code}\n" --cacert "$STATE_DIR/ca.crt" https://grafana.localhost/login
+          curl -fsS "${t[@]}" -o /dev/null -w "argocd %{http_code}\n" --cacert "$STATE_DIR/ca.crt" https://argocd.localhost/
+          code=$(curl -s "${t[@]}" -o /dev/null -w "%{http_code}" http://api-dev.localhost/api/items)
           test "$code" = "301"
       - name: Prometheus coleta a API
         run: |
@@ -78,6 +81,7 @@ jobs:
           kubectl get pods -A -o wide
           kubectl get events -A --sort-by=.lastTimestamp | tail -60
           kubectl get gateway,httproute -A
+          kubectl -n envoy-gateway-system get svc -o wide
           for p in $(kubectl get pods -A --no-headers | awk '$4!="Running" && $4!="Completed" {print $1"/"$2}'); do
             echo "::group::$p"; kubectl -n "${p%/*}" describe pod "${p#*/}" | tail -30; kubectl -n "${p%/*}" logs "${p#*/}" --all-containers --tail=40; echo "::endgroup::"
           done

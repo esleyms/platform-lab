@@ -17,6 +17,11 @@ spec:
             limits: { memory: 256Mi }
       envoyService:
         type: NodePort
+        # O Envoy Gateway usa Local por padrão: o NodePort só responde no nó que roda o
+        # pod do Envoy. No kind o tráfego do host entra pelo control-plane, onde não há
+        # Envoy, e a conexão é descartada. Cluster deixa o kube-proxy encaminhar entre nós
+        # (custo: perde o IP de origem do cliente, irrelevante neste laboratório).
+        externalTrafficPolicy: Cluster
         patch:
           type: StrategicMerge
           value:
