@@ -9,7 +9,8 @@ WORKDIR /build
 RUN python -m venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH
 COPY requirements.txt .
-RUN pip install --require-virtualenv -r requirements.txt
+RUN pip install --require-virtualenv -r requirements.txt \
+ && python -m pip uninstall -y pip
 COPY src/ ./src/
 
 # ---- runtime: só o venv e o código, usuário sem privilégios ----
@@ -25,7 +26,11 @@ ENV PATH=/opt/venv/bin:$PATH \
     PYTHONPATH=/app/src \
     APP_VERSION=${VERSION}
 
-RUN groupadd --system --gid 10001 app \
+# pip, setuptools e ensurepip não são usados em runtime. Removê-los tira do scan as
+# dependências que eles embutem (urllib3, msgpack...) e um instalador de pacotes da imagem.
+RUN python -m pip uninstall -y pip setuptools wheel 2>/dev/null; \
+    rm -rf /usr/local/lib/python*/ensurepip /usr/local/bin/pip* \
+ && groupadd --system --gid 10001 app \
  && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
 
 COPY --from=build /opt/venv /opt/venv
