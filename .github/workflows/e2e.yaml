@@ -82,6 +82,11 @@ jobs:
           kubectl get events -A --sort-by=.lastTimestamp | tail -60
           kubectl get gateway,httproute -A
           kubectl -n envoy-gateway-system get svc -o wide
+          gc='{range .items[*]}{.metadata.name} gen={.metadata.generation}{"\n"}'
+          gc+='{range .status.conditions[*]}  {.type}={.status} obsGen={.observedGeneration} {.reason}: {.message}{"\n"}{end}{end}'
+          kubectl get gatewayclass -o jsonpath="$gc"
+          kubectl -n envoy-gateway-system get envoyproxy -o jsonpath='{range .items[*].status.ancestors[*].conditions[*]}{.type}={.status} {.reason}: {.message}{"\n"}{end}'
+          kubectl -n envoy-gateway-system logs deploy/envoy-gateway | grep -iE 'error|invalid|parametersRef' | tail -20
           for p in $(kubectl get pods -A --no-headers | awk '$4!="Running" && $4!="Completed" {print $1"/"$2}'); do
             echo "::group::$p"; kubectl -n "${p%/*}" describe pod "${p#*/}" | tail -30; kubectl -n "${p%/*}" logs "${p#*/}" --all-containers --tail=40; echo "::endgroup::"
           done
