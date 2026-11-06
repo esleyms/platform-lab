@@ -1,0 +1,7 @@
+# Os kubelets do kind usam certificados autoassinados. Aceitável só em laboratório.
+args:
+  - --kubelet-insecure-tls
+
+resources:
+  requests: { cpu: 25m, memory: 64Mi }
+  limits: { memory: 128Mi }

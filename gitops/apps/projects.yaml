@@ -1,0 +1,55 @@
+# platform: componentes de cluster (CRDs, operators). Precisa de escopo de cluster.
+# workloads: aplicações. Só o próprio repositório como origem, só os namespaces da API
+# como destino e nenhum recurso de cluster além de Namespace.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  description: Componentes de plataforma do laboratório
+  sourceRepos:
+    - https://github.com/esleyms/platform-lab.git
+    - https://argoproj.github.io/argo-helm
+    - https://charts.jetstack.io
+    - docker.io/envoyproxy
+    - https://cloudnative-pg.github.io/charts
+    - https://bitnami-labs.github.io/sealed-secrets
+    - https://kubernetes-sigs.github.io/metrics-server/
+    - https://prometheus-community.github.io/helm-charts
+    - https://grafana-community.github.io/helm-charts
+    - https://grafana.github.io/helm-charts
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: "*"
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: workloads
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  description: Aplicações de negócio
+  sourceRepos:
+    - https://github.com/esleyms/platform-lab.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: api-dev
+    - server: https://kubernetes.default.svc
+      namespace: api-prod
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  roles:
+    - name: deployer
+      description: Pode sincronizar, mas não apagar
+      policies:
+        - p, proj:workloads:deployer, applications, get, workloads/*, allow
+        - p, proj:workloads:deployer, applications, sync, workloads/*, allow

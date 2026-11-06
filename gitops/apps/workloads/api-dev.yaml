@@ -1,0 +1,41 @@
+# dev: sync automático. Todo merge na main que altera gitops/envs/dev chega ao cluster.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: api-dev
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: workloads
+  sources:
+    - repoURL: https://github.com/esleyms/platform-lab.git
+      targetRevision: main
+      path: charts/api
+      helm:
+        releaseName: api
+        valueFiles:
+          - $values/gitops/envs/dev/values.yaml
+    - repoURL: https://github.com/esleyms/platform-lab.git
+      targetRevision: main
+      ref: values
+    - repoURL: https://github.com/esleyms/platform-lab.git
+      targetRevision: main
+      path: gitops/envs/dev/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: api-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    managedNamespaceMetadata:
+      labels:
+        platform-lab/gateway-access: "true"
+        platform-lab/env: dev
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+      - PruneLast=true

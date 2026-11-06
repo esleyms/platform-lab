@@ -1,0 +1,7 @@
+# O Service dos proxies (NodePort fixo) é configurado no recurso EnvoyProxy,
+# em gitops/platform/gateway/gatewayclass.yaml, e não aqui.
+deployment:
+  envoyGateway:
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { memory: 512Mi }

@@ -1,0 +1,10 @@
+# Nome padrão esperado pelo kubeseal (sealed-secrets-controller em kube-system).
+fullnameOverride: sealed-secrets-controller
+
+# A chave é fornecida pelo bootstrap e guardada fora do cluster. Rotação automática
+# desligada para que `make down && make up` continue decifrando o que está no Git.
+keyrenewperiod: "0"
+
+resources:
+  requests: { cpu: 10m, memory: 32Mi }
+  limits: { memory: 128Mi }

@@ -1,0 +1,39 @@
+# prod: sem sync automático. A promoção é um PR alterando gitops/envs/prod/values.yaml,
+# e o sync é disparado por uma pessoa (UI, CLI ou make sync-prod).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: api-prod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: workloads
+  sources:
+    - repoURL: https://github.com/esleyms/platform-lab.git
+      targetRevision: main
+      path: charts/api
+      helm:
+        releaseName: api
+        valueFiles:
+          - $values/gitops/envs/prod/values.yaml
+    - repoURL: https://github.com/esleyms/platform-lab.git
+      targetRevision: main
+      ref: values
+    - repoURL: https://github.com/esleyms/platform-lab.git
+      targetRevision: main
+      path: gitops/envs/prod/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: api-prod
+  syncPolicy:
+    managedNamespaceMetadata:
+      labels:
+        platform-lab/gateway-access: "true"
+        platform-lab/env: prod
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+      - PruneLast=true

@@ -1,0 +1,37 @@
+# O Argo CD gerenciando a si mesmo. Mesmo chart e values usados no bootstrap.
+# Sem finalizer de propósito: apagar esta Application não deve desinstalar o Argo CD.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: platform
+  sources:
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argo-cd
+      targetRevision: 10.14.0
+      helm:
+        releaseName: argocd
+        valueFiles:
+          - $values/gitops/platform/argocd/values.yaml
+    - repoURL: https://github.com/esleyms/platform-lab.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

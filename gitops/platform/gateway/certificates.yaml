@@ -1,0 +1,57 @@
+# Cadeia de confiança do laboratório:
+#   ClusterIssuer selfsigned -> Certificate CA (platform-lab-ca) -> ClusterIssuer CA -> certificado do Gateway
+# Uma CA própria (em vez de um certificado autoassinado direto) permite confiar
+# uma única vez no host (make ca) e emitir novos nomes sem novos avisos.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: platform-lab-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: platform-lab CA
+  secretName: platform-lab-ca
+  duration: 87600h # 10 anos
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    kind: ClusterIssuer
+    name: selfsigned
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: platform-lab-ca
+spec:
+  ca:
+    secretName: platform-lab-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: platform-gateway-tls
+  namespace: envoy-gateway-system
+spec:
+  secretName: platform-gateway-tls
+  duration: 2160h # 90 dias
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  dnsNames:
+    - argocd.localhost
+    - grafana.localhost
+    - api.localhost
+    - api-dev.localhost
+  issuerRef:
+    kind: ClusterIssuer
+    name: platform-lab-ca
