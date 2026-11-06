@@ -1,0 +1,22 @@
+# Ambiente prod. Promoção = PR alterando image.tag (workflow "promote"), seguido de sync manual.
+image:
+  tag: "0.0.0-bootstrap"
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+route:
+  hostname: api.localhost
+
+# Escritas exigem token. O Secret é criado a partir do SealedSecret gerado por `make seal ENV=prod`.
+auth:
+  existingSecret: api-token
+
+config:
+  logLevel: INFO

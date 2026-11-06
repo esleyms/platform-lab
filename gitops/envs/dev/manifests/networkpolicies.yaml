@@ -1,0 +1,71 @@
+# Zero trust no namespace: nada entra nem sai sem uma política explícita.
+# As regras da API ficam no chart (charts/api/templates/networkpolicy.yaml).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# PostgreSQL: recebe da API, do operator e do Prometheus; fala com outras instâncias
+# do mesmo cluster (replicação), com o DNS e com o kube-apiserver (o instance manager
+# do CNPG lê o próprio recurso Cluster e grava status).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-db
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: api-db
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: api
+      ports:
+        - { port: 5432, protocol: TCP }
+    - from:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: api-db
+      ports:
+        - { port: 5432, protocol: TCP }
+        - { port: 8000, protocol: TCP }
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - { port: 8000, protocol: TCP }
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - { port: 9187, protocol: TCP }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: api-db
+      ports:
+        - { port: 5432, protocol: TCP }
+        - { port: 8000, protocol: TCP }
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    # API server: o destino real após o DNAT do Service é o IP do control-plane:6443.
+    # Esse IP varia por máquina (rede docker do kind), por isso a regra é por porta.
+    - ports:
+        - { port: 6443, protocol: TCP }
+        - { port: 443, protocol: TCP }

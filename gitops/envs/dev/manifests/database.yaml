@@ -1,0 +1,30 @@
+# PostgreSQL gerenciado pelo CloudNativePG. O operator cria:
+#   api-db-rw / api-db-ro  Services de escrita e leitura
+#   api-db-app             Secret com usuário, senha e a "uri" consumida pela API
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: api-db
+spec:
+  instances: 1
+  storage:
+    size: 1Gi
+  bootstrap:
+    initdb:
+      database: app
+      owner: app
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 512Mi }
+---
+# PodMonitor manual: monitoring.enablePodMonitor do Cluster está depreciado no CNPG 1.30.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: api-db
+spec:
+  selector:
+    matchLabels:
+      cnpg.io/cluster: api-db
+  podMetricsEndpoints:
+    - port: metrics

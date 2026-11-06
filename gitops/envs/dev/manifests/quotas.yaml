@@ -1,0 +1,24 @@
+# Teto do namespace. Sem isto, um HPA mal configurado ou um vazamento de memória
+# consome o cluster inteiro.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: api-dev
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 3Gi
+    limits.memory: 6Gi
+    persistentvolumeclaims: "4"
+    requests.storage: 10Gi
+---
+# Valores padrão para containers que não declaram resources.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: defaults
+spec:
+  limits:
+    - type: Container
+      defaultRequest: { cpu: 50m, memory: 64Mi }
+      default: { memory: 256Mi }

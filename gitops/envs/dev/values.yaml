@@ -1,0 +1,20 @@
+# Ambiente dev. image.tag é atualizado automaticamente pelo CI a cada merge na main.
+image:
+  tag: "0.0.0-bootstrap"
+
+replicaCount: 1
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+
+# Com 1 réplica mínima, maxUnavailable: 1 permitiria derrubar tudo num drain.
+podDisruptionBudget:
+  enabled: false
+
+route:
+  hostname: api-dev.localhost
+
+config:
+  logLevel: DEBUG
