@@ -6,6 +6,7 @@ on:
     paths:
       - apps/api/**
       - .github/workflows/ci.yaml
+  workflow_dispatch:
   pull_request:
     paths:
       - apps/api/**
@@ -87,26 +88,26 @@ jobs:
           exit-code: "1"
           format: table
       - name: Trivy SARIF (aba Security do GitHub)
-        if: always() && github.event_name == 'push'
+        if: always() && github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE }}:${{ steps.vars.outputs.tag }}
           format: sarif
           output: trivy.sarif
           skip-setup-trivy: true
-      - if: always() && github.event_name == 'push'
+      - if: always() && github.event_name != 'pull_request'
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           sarif_file: trivy.sarif
       - name: Login no GHCR
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Push
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         working-directory: .
         run: docker push "$IMAGE:${{ steps.vars.outputs.tag }}"
 
@@ -115,7 +116,7 @@ jobs:
   # então não há loop.
   bump-dev:
     needs: image
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
