@@ -1,0 +1,67 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+    paths: [infra/**, charts/**, gitops/**, ansible/**, scripts/**, .github/workflows/**, .yamllint.yaml]
+  pull_request:
+    paths: [infra/**, charts/**, gitops/**, ansible/**, scripts/**, .github/workflows/**, .yamllint.yaml]
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: infra/terraform/kind
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_version: 1.17.1
+      - run: terraform fmt -check -recursive -diff
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate
+
+  kubernetes:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
+        with:
+          version: v4.3.1
+      - name: Instala kubeconform
+        run: |
+          curl -sSfL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz \
+            | sudo tar xz -C /usr/local/bin kubeconform
+      - name: helm lint por ambiente
+        run: |
+          for env in dev prod; do
+            helm lint charts/api --strict -f gitops/envs/$env/values.yaml --set image.tag=ci
+          done
+      - name: kubeconform (chart renderizado + manifestos GitOps)
+        run: scripts/kubeconform.sh
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.13"
+      - run: pip install yamllint==1.38.0 ansible-core==2.22.0 ansible-lint==26.11.0
+      - name: yamllint
+        run: yamllint -s .
+      - name: shellcheck
+        run: shellcheck scripts/*.sh
+      - name: ansible-lint
+        working-directory: ansible
+        run: |
+          ansible-galaxy collection install -r requirements.yml
+          ansible-lint
+      - name: actionlint
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+          ./actionlint -color

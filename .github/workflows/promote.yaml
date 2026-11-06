@@ -1,0 +1,40 @@
+name: promote
+
+# Promoção para prod via Pull Request: a mesma imagem que passou por dev,
+# revisada por uma pessoa, e aplicada por sync manual no Argo CD.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag a promover (vazio = a tag atual de dev)"
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  pr:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Abre PR alterando gitops/envs/prod/values.yaml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          TAG="${INPUT_TAG:-$(yq '.image.tag' gitops/envs/dev/values.yaml)}"
+          CURRENT="$(yq '.image.tag' gitops/envs/prod/values.yaml)"
+          if [[ "$TAG" == "$CURRENT" ]]; then
+            echo "prod já está em $TAG"; exit 0
+          fi
+          branch="promote/prod-${TAG}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          TAG="$TAG" yq -i '.image.tag = strenv(TAG)' gitops/envs/prod/values.yaml
+          git commit -am "chore(prod): promove api ${TAG}"
+          git push -u origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "Promover api ${TAG} para prod" \
+            --body "$(printf 'De `%s` para `%s`.\n\nDepois do merge: `make sync-prod` ou Sync no Argo CD.\nRollback: reverter este PR e sincronizar de novo.' "$CURRENT" "$TAG")"
