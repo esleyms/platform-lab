@@ -37,4 +37,9 @@ jobs:
           git push -u origin "$branch"
           gh pr create --base main --head "$branch" \
             --title "Promover api ${TAG} para prod" \
-            --body "$(printf 'De `%s` para `%s`.\n\nDepois do merge: `make sync-prod` ou Sync no Argo CD.\nRollback: reverter este PR e sincronizar de novo.' "$CURRENT" "$TAG")"
+            --body-file - <<EOF
+          De \`${CURRENT}\` para \`${TAG}\`.
+
+          Depois do merge: \`make sync-prod\` ou Sync no Argo CD.
+          Rollback: reverter este PR e sincronizar de novo.
+          EOF
