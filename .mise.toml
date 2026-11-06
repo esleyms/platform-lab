@@ -1,0 +1,9 @@
+# Versões das ferramentas usadas no laboratório: `mise install` instala todas.
+[tools]
+terraform = "1.17.1"
+kubectl = "1.37.0"
+kind = "0.33.0"
+helm = "4.3.1"
+kubeseal = "0.41.2"
+argocd = "3.6.1"
+python = "3.13"

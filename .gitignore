@@ -1,0 +1,26 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Ansible
+ansible/inventory/hosts.yml
+
+# Segredos nunca entram no repositório (ficam em ~/.config/platform-lab)
+*.key
+*.pem
+kubeconfig*
+.env
+
+.DS_Store
+.idea/
+.vscode/
