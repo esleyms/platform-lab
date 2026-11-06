@@ -1,0 +1,11 @@
+apiVersion: v2
+name: api
+description: API de exemplo do platform-lab com probes, HPA, PDB, NetworkPolicy, ServiceMonitor e regras de SLO
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.30.0-0"
+home: https://github.com/esleyms/platform-lab
+maintainers:
+  - name: Esley Magalhães
+    url: https://github.com/esleyms

@@ -1,0 +1,102 @@
+# Valores padrão. Cada ambiente sobrescreve o necessário em gitops/envs/<env>/values.yaml.
+
+image:
+  repository: ghcr.io/esleyms/platform-lab-api
+  # Atualizado pelo CI (dev) ou por PR de promoção (prod). Nunca "latest".
+  tag: ""
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+
+# Banco provisionado pelo CloudNativePG. O operator cria o Secret <cluster>-app
+# com a chave "uri" (postgresql://usuario:senha@host:5432/banco).
+database:
+  secretName: api-db-app
+  secretKey: uri
+
+# Token exigido nas escritas (POST). Vem de um SealedSecret; opcional em dev.
+auth:
+  existingSecret: ""
+  secretKey: token
+
+config:
+  logLevel: INFO
+  faultErrorRate: "0"
+  faultLatencyMs: "0"
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 96Mi
+  limits:
+    # Sem limit de CPU: evita throttling (CFS) em picos curtos. Memória tem limit
+    # porque estourar memória derruba o nó, estourar CPU só deixa lento.
+    memory: 256Mi
+
+probes:
+  startup:
+    httpGet: { path: /healthz, port: http }
+    periodSeconds: 2
+    failureThreshold: 30
+  liveness:
+    httpGet: { path: /healthz, port: http }
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  readiness:
+    httpGet: { path: /readyz, port: http }
+    periodSeconds: 5
+    # maior que APP_DB_TIMEOUT_SECONDS (2s)
+    timeoutSeconds: 3
+    failureThreshold: 2
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+route:
+  enabled: true
+  hostname: ""
+  gateway:
+    name: platform
+    namespace: envoy-gateway-system
+    sectionName: https
+
+networkPolicy:
+  enabled: true
+  gatewayNamespace: envoy-gateway-system
+  monitoringNamespace: monitoring
+
+serviceMonitor:
+  enabled: true
+  interval: 15s
+
+slo:
+  enabled: true
+  # 99,5% das requisições /api/* sem 5xx
+  availabilityTarget: 0.995
+  # p95 abaixo deste valor (segundos)
+  latencyP95Seconds: 0.3
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+nodeSelector: {}
+tolerations: []

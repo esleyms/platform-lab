@@ -1,0 +1,5 @@
+{{ include "api.fullname" . }} {{ .Values.image.tag }} em {{ .Release.Namespace }}
+{{- if .Values.route.enabled }}
+
+  curl --cacert ~/.config/platform-lab/ca.crt https://{{ .Values.route.hostname }}/readyz
+{{- end }}

@@ -1,0 +1,74 @@
+{{- if .Values.slo.enabled }}
+{{- $sel := include "api.sloSelector" . }}
+{{- $budget := subf 1.0 .Values.slo.availabilityTarget | printf "%.4f" }}
+# SLO de disponibilidade com alertas multi-janela/multi-burn-rate (SRE Workbook, cap. 5)
+# e SLO de latência p95. Detalhes e justificativas em docs/slo.md.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "api.fullname" . }}-slo
+  labels:
+    {{- include "api.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: api-slo-recording
+      interval: 30s
+      rules:
+        {{- range $window := list "5m" "30m" "1h" "6h" "3d" }}
+        - record: api:sli_errors:ratio_rate{{ $window }}
+          expr: |
+            sum(rate(http_requests_total{ {{- $sel }}, status=~"5.."}[{{ $window }}]))
+            /
+            sum(rate(http_requests_total{ {{- $sel }}}[{{ $window }}]))
+          labels:
+            namespace: {{ $.Release.Namespace }}
+        {{- end }}
+        - record: api:http_request_duration_seconds:p95_5m
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le) (rate(http_request_duration_seconds_bucket{ {{- $sel }}}[5m])))
+          labels:
+            namespace: {{ .Release.Namespace }}
+
+    - name: api-slo-alerts
+      rules:
+        # Queima de 2% do budget mensal em 1h. Exige as duas janelas para não disparar
+        # por um pico isolado (5m) nem continuar disparando depois de resolvido (1h).
+        - alert: ApiErrorBudgetBurnFast
+          expr: |
+            api:sli_errors:ratio_rate1h{namespace="{{ .Release.Namespace }}"} > (14.4 * {{ $budget }})
+            and
+            api:sli_errors:ratio_rate5m{namespace="{{ .Release.Namespace }}"} > (14.4 * {{ $budget }})
+          for: 2m
+          labels:
+            severity: critical
+            slo: availability
+          annotations:
+            summary: "API em {{ .Release.Namespace }} consumindo o error budget 14x mais rápido que o sustentável"
+            description: 'Taxa de erro 5xx na última hora: {{ "{{" }} $value | humanizePercentage {{ "}}" }}.'
+            runbook_url: https://github.com/esleyms/platform-lab/blob/main/docs/runbook.md#apierrorbudgetburnfast
+        - alert: ApiErrorBudgetBurnSlow
+          expr: |
+            api:sli_errors:ratio_rate6h{namespace="{{ .Release.Namespace }}"} > (6 * {{ $budget }})
+            and
+            api:sli_errors:ratio_rate30m{namespace="{{ .Release.Namespace }}"} > (6 * {{ $budget }})
+          for: 15m
+          labels:
+            severity: warning
+            slo: availability
+          annotations:
+            summary: "API em {{ .Release.Namespace }} com consumo elevado e contínuo do error budget"
+            description: 'Taxa de erro 5xx nas últimas 6h: {{ "{{" }} $value | humanizePercentage {{ "}}" }}.'
+            runbook_url: https://github.com/esleyms/platform-lab/blob/main/docs/runbook.md#apierrorbudgetburnslow
+        - alert: ApiLatencyP95High
+          expr: |
+            api:http_request_duration_seconds:p95_5m{namespace="{{ .Release.Namespace }}"} > {{ .Values.slo.latencyP95Seconds }}
+          for: 10m
+          labels:
+            severity: warning
+            slo: latency
+          annotations:
+            summary: "p95 da API em {{ .Release.Namespace }} acima de {{ mulf .Values.slo.latencyP95Seconds 1000 }} ms"
+            description: 'p95 atual: {{ "{{" }} $value | humanizeDuration {{ "}}" }}.'
+            runbook_url: https://github.com/esleyms/platform-lab/blob/main/docs/runbook.md#apilatencyp95high
+{{- end }}

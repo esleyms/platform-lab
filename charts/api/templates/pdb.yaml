@@ -1,0 +1,16 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+# Protege contra interrupções voluntárias (drain de nó, upgrade). Não protege contra
+# falhas involuntárias como OOMKill ou queda do nó.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "api.fullname" . }}
+  labels:
+    {{- include "api.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      {{- include "api.selectorLabels" . | nindent 6 }}
+{{- end }}
