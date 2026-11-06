@@ -1,0 +1,83 @@
+name: e2e
+
+# Sobe a plataforma inteira num runner do GitHub, exatamente como `make up` faz localmente.
+# O Argo CD lê o estado desejado da branch main no GitHub, então este teste valida a main.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"
+  push:
+    branches: [main]
+    paths: [infra/**, charts/**, gitops/**, scripts/**, .github/workflows/e2e.yaml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e
+  cancel-in-progress: true
+
+jobs:
+  platform:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      KUBECONFIG: /home/runner/.kube/platform-lab
+      STATE_DIR: /home/runner/.config/platform-lab
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_version: 1.17.1
+          terraform_wrapper: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
+        with:
+          version: v4.3.1
+      - name: Limites de inotify para kind com vários nós
+        run: sudo sysctl -w fs.inotify.max_user_watches=524288 fs.inotify.max_user_instances=512
+      - name: Cluster (Terraform + kind)
+        run: make cluster
+      - name: Bootstrap (segredos iniciais + Argo CD + App of Apps)
+        run: make bootstrap
+      - name: Aguarda a plataforma
+        run: TIMEOUT=1500 scripts/wait-platform.sh
+      - name: Smoke test pelo Gateway (HTTPS na porta 443 do host)
+        run: |
+          make ca
+          for path in /readyz /api/items /version; do
+            curl -fsS --retry 10 --retry-delay 6 --retry-all-errors \
+              --cacert "$STATE_DIR/ca.crt" "https://api-dev.localhost${path}"
+            echo
+          done
+          curl -fsS -o /dev/null -w "grafana %{http_code}\n" --cacert "$STATE_DIR/ca.crt" https://grafana.localhost/login
+          curl -fsS -o /dev/null -w "argocd %{http_code}\n" --cacert "$STATE_DIR/ca.crt" https://argocd.localhost/
+          code=$(curl -s -o /dev/null -w "%{http_code}" http://api-dev.localhost/api/items)
+          test "$code" = "301"
+      - name: Prometheus coleta a API
+        run: |
+          kubectl -n monitoring port-forward svc/prometheus-operated 9090 >/dev/null 2>&1 &
+          sleep 5
+          for _ in $(seq 1 20); do
+            up=$(curl -s 'http://127.0.0.1:9090/api/v1/query' --data-urlencode 'query=up{namespace="api-dev",service="api"}' \
+              | jq -r '.data.result | length')
+            [ "$up" -gt 0 ] && echo "alvos da API: $up" && exit 0
+            sleep 15
+          done
+          echo "Prometheus não encontrou a API"; exit 1
+      - name: Diagnóstico
+        if: failure()
+        run: |
+          set +e
+          kubectl -n argocd get applications.argoproj.io -o wide
+          for app in $(kubectl -n argocd get applications.argoproj.io -o jsonpath='{range .items[?(@.status.health.status!="Healthy")]}{.metadata.name}{" "}{end}'); do
+            echo "::group::application $app"
+            kubectl -n argocd get application "$app" -o jsonpath='{.status.conditions}{"\n"}{.status.operationState.message}{"\n"}'
+            kubectl -n argocd get application "$app" -o jsonpath='{range .status.resources[?(@.health.status!="Healthy")]}{.kind}/{.namespace}/{.name}: {.health.status} {.health.message}{"\n"}{end}'
+            echo "::endgroup::"
+          done
+          kubectl get pods -A -o wide
+          kubectl get events -A --sort-by=.lastTimestamp | tail -60
+          kubectl get gateway,httproute -A
+          for p in $(kubectl get pods -A --no-headers | awk '$4!="Running" && $4!="Completed" {print $1"/"$2}'); do
+            echo "::group::$p"; kubectl -n "${p%/*}" describe pod "${p#*/}" | tail -30; kubectl -n "${p%/*}" logs "${p#*/}" --all-containers --tail=40; echo "::endgroup::"
+          done
